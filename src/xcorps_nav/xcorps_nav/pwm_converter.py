@@ -41,7 +41,6 @@ class PWMConverter(Node):
         self.Kd_servo = self.declare_parameter("Kd_servo", default_params['Kp_servo']).value
             
         namespace_OS = '/OS'
-        namespace_TS = '/TS'
         
         self.OS_des_heading = np.zeros(10)
         self.OS_des_spd = np.zeros(10)
@@ -62,16 +61,41 @@ class PWMConverter(Node):
         self.pwm_pub =self.create_publisher(Int32, namespace_OS + '/pwm', 1)
         
         self.pwm_timer = self.create_timer(self.dt, self.pub_pwm)
-        
+
+        self.OS_des_heading_received = False
+        self.OS_des_spd_received = False
+        self.OS_heading_received = False
+        self.OS_spd_received = False
+
+    def wait_for_topics(self):
+        self.timer = self.create_timer(1.0, self.check_topics_status)
+
+    def check_topics_status(self):
+        if not self.OS_des_heading_received:
+            self.get_logger().info('No topic OS_des_heading_received')
+        if not self.OS_des_spd_received:
+            self.get_logger().info('No topic OS_des_spd_received')
+        if not self.OS_heading_received:
+            self.get_logger().info('No topic OS_heading_received')
+        if not self.OS_spd_received:
+            self.get_logger().info('No topic OS_spd_received')
+        if self.OS_des_heading_received and self.OS_des_spd_received and self.OS_heading_received and self.OS_spd_received:
+            self.get_logger().info('All topics received')
+        else:
+            self.get_logger().info('Waiting for topics to be published...')
+
     def OS_des_heading_callback(self, msg):
+        self.OS_des_heading_received = True
         self.OS_des_heading = np.append(self.OS_des_heading, msg.data)
         self.OS_des_heading = self.OS_des_heading[1:]
         
     def OS_des_spd_callback(self, msg):
+        self.OS_des_spd_received = True
         self.OS_des_spd = np.append(self.OS_des_spd, msg.data)
         self.OS_des_spd = self.OS_des_spd[1:]
         
     def OS_heading_callback(self, msg):
+        self.OS_heading_received = True
         self.OS_heading = np.append(self.OS_heading, msg.data)
         self.OS_heading = self.OS_heading[1:]
         
@@ -85,6 +109,7 @@ class PWMConverter(Node):
         self.err_heading = self.err_heading[1:]
         
     def OS_spd_callback(self, msg):
+        self.OS_spd_received = True
         self.OS_spd = np.append(self.OS_spd, msg.data)
         self.OS_spd = self.OS_spd[1:]
         
