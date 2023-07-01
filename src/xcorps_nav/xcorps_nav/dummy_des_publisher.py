@@ -26,7 +26,7 @@ class Dummy_Des_Publisher(Node):
         OS_des_heading.data = 30.0
         self.OS_des_heading_pub.publish(OS_des_heading)
         OS_des_spd = Float64()
-        OS_des_spd.data = 2.0
+        OS_des_spd.data = 1.0
         self.OS_des_spd_pub.publish(OS_des_spd)
         OS_heading = Float64()
         OS_heading.data = 0.0
