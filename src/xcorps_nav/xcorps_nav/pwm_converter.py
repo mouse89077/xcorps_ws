@@ -24,13 +24,13 @@ class PWMConverter(Node):
         #     self.Kp_servo = config['Kp_servo']
         #     self.Kd_servo = config['Kd_servo']
         default_params = {
-            'servo_lim' : 0.1,
+            'servo_lim' : [60, 120],
             'pwm_lim' : [1100, 1900],
             'dt' : 0.1, 
-            'Kp_thrust' : 1.0,
-            'Kd_thrust' : 1.0,
-            'Kp_servo' : 1.0,
-            'Kd_servo' : 1.0,
+            'Kp_thrust' : 100.0,
+            'Kd_thrust' : 100.0,
+            'Kp_servo' : 100.0,
+            'Kd_servo' : 100.0,
         }
         self.servo_lim = self.declare_parameter("servo_lim", default_params['servo_lim']).value
         self.pwm_lim = self.declare_parameter("pwm_lim", default_params['pwm_lim']).value
@@ -121,18 +121,26 @@ class PWMConverter(Node):
         self.cal_thrust_pwm
         self.cal_servo_pwm
 
+        # print(self.err_spd[-1])
+        # print(self.err_heading[-1])
+        # print(str(self.thrust_pwm[-1]))
+        # print(self.servo_pwm[-1])
+
         pwm = Int32()
+
         pwm.data = int(str(int(self.thrust_pwm[-1])) + str(int(self.servo_pwm[-1])))
         
         self.pwm_pub.publish(pwm)
         
     # functions that returns something
     def cal_thrust_pwm(self):
-        thrust_pwm = self.Kp_thrust * self.err_spd[-1] - self.Kd_thrust * self.err_spd[-2]
+        thrust_pwm = self.Kp_thrust * self.err_spd[-1] - self.Kd_thrust * self.err_spd[-2] + (self.pwm_lim[0] + self.pwm_lim[1]) / 2
         if thrust_pwm > self.pwm_lim[1]:
             thrust_pwm = self.pwm_lim[1]
         elif thrust_pwm < self.pwm_lim[0]:
             thrust_pwm = self.pwm_lim[0]
+
+        thrust_pwm = int(thrust_pwm)
         
         self.thrust_pwm = np.append(self.thrust_pwm, thrust_pwm)
         self.thrust_pwm = self.thrust_pwm[1:]
@@ -144,7 +152,8 @@ class PWMConverter(Node):
         elif servo < self.servo_lim[0]:
             servo = self.servo_lim[0]
         norm_servo = (servo - self.servo_lim[0]) / (self.servo_lim[1] - self.servo_lim[0])
-        s_pwm = int(self.pwm_lim[0] + (self.pwm_lim[1] - self.pwm_lim[0]) * norm_servo)
+        s_pwm = self.pwm_lim[0] + (self.pwm_lim[1] - self.pwm_lim[0]) * norm_servo
+        s_pwm = int(s_pwm)
         
         self.servo_pwm = np.append(self.servo_pwm, s_pwm)
         self.servo_pwm = self.servo_pwm[1:]
