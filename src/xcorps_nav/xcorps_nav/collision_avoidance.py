@@ -4,7 +4,7 @@ import os
 import yaml
 from rclpy.node import Node
 from geometry_msgs.msg import Point
-from std_msgs.msg import Bool, Float64, Float64MultiArray
+from std_msgs.msg import Bool, Float64, Float64MultiArray, String
 import numpy as np
 from scipy.spatial import ConvexHull
 import matplotlib.path as mpath
@@ -78,6 +78,7 @@ class Collision_Avoidance(Node):
         self.RAP_pub = self.create_publisher(Float64MultiArray, namespace_OS + '/RAP', 1)
         self.des_heading_pub = self.create_publisher(Float64, namespace_OS + '/des_heading', 1)
         self.des_spd_pub = self.create_publisher(Float64, namespace_OS + '/des_spd', 1)
+
         # timer
         self.timer = self.create_timer(self.dt, self.pub_Collision)
 
