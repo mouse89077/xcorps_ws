@@ -9,6 +9,7 @@ import numpy as np
 from scipy.spatial import ConvexHull
 import matplotlib.path as mpath
 import math
+import wvo
 
 class Collision_Avoidance(Node):
     def __init__(self):
@@ -62,6 +63,10 @@ class Collision_Avoidance(Node):
         self.des_heading = np.zeros(10)
         self.des_spd = np.zeros(10)
         
+        self.TS_tCPA = np.zeros(10)
+        self.TS_dCPA = np.zeros(10)
+        self.TS_pre_col_ch = np.zeros(10)
+        
         # subscriber
         self.OS_enu_pos_sub = self.create_subscription(Point, namespace_OS + '/enu_pos', self.OS_enu_pos_callback, 1)
         self.TS_enu_pos_sub = self.create_subscription(Point, namespace_TS + '/enu_pos', self.TS_enu_pos_callback, 1)
@@ -70,6 +75,8 @@ class Collision_Avoidance(Node):
         self.OS_heading_sub = self.create_subscription(Float64, namespace_OS + '/heading', self.OS_heading_callback, 1)
         self.TS_heading_sub = self.create_subscription(Float64, namespace_TS + '/heading', self.TS_heading_callback, 1)
         # publisher
+        self.tCPA_pub = self.create_publisher(Float64, namespace_TS + '/tCPA', 1)
+        self.dCPA_pub = self.create_publisher(Float64, namespace_TS + '/dCPA', 1)
         self.pre_col_ch_pub = self.create_publisher(Bool, namespace_TS + '/pre_col_ch', 1)
         self.VO_pub = self.create_publisher(Float64MultiArray, namespace_TS + '/VO', 1)
         self.WVO_pub = self.create_publisher(Float64MultiArray, namespace_TS + '/WVO', 1)
@@ -136,41 +143,58 @@ class Collision_Avoidance(Node):
     # pub
     def pub_Collision(self):
         # pre_col_ch
-        tCPA = self.cal_tCPA(self.OS_enu_pos[-1, :], self.TS_enu_pos[-1, :], self.OS_heading[-1], self.TS_heading[-1])
-        dCPA = self.cal_dCPA(self.OS_enu_pos[-1, :], self.TS_enu_pos[-1, :], self.OS_spd[-1], self.TS_spd[-1], self.OS_heading[-1], self.TS_heading[-1], \
-                            tCPA)
-        pre_col_ch = self.cal_pre_col_ch(tCPA, dCPA)
-        temp = Bool()
-        temp.data = pre_col_ch
-        self.pre_col_ch_pub.publish(temp)
+        tCPA, dCPA = cal_CPA(self.OS_enu_pos[-1, :], self.TS_enu_pos[-1, :], self.OS_spd[-1], self.TS_spd[-1], self.OS_heading[-1], self.TS_heading[-1])
+        pre_col_ch = cal_pre_col_ch(tCPA, dCPA, self.tmin. self.tmax)
+        
+        self.TS_tCPA = np.append(self.TS_tCPA, tCPA)
+        self.TS_dCPA = np.append(self.TS_dCPA, dCPA)
+        self.TS_pre_col_ch = np.append(self.TS_pre_col_ch, pre_col_ch)
+        
+        self.TS_tCPA = self.TS_tCPA[1:]
+        self.TS_dCPA = self.TS_dCPA[1:]
+        self.TS_pre_col_ch = self.TS_pre_col_ch[1:]
+        
+        TS_tCPA_ = Float64()
+        TS_tCPA_.data = tCPA
+        self.tCPA_pub.publish(TS_dCPA_)
+        
+        TS_dCPA_ = Float64()
+        TS_dCPA_.data = dCPA
+        self.dCPA_pub.publish(TS_tCPA_)
+        
+        pre_col_ch_ = Bool()
+        pre_col_ch_.data = pre_col_ch
+        self.pre_col_ch_pub.publish(pre_col_ch_)
+        
         # RV, RP
-        RV = self.cal_RV(self.OS_heading[-1])
+        RV = cal_RV(self.OS_heading[-1], self.spd_lim, self.heading_lim)
         # print(np.shape(RV))
         RVpublish = Float64MultiArray()
         # RVpublish.data = RV
         RVpublish.data = [value for sublist in RV for value in sublist]
         self.RV_pub.publish(RVpublish)
         RAV = RV # initialize
-        RP = self.cal_RP(self.OS_enu_pos[-1, :], RV)
+        RP = cal_RP(self.OS_enu_pos[-1, :], RV)
         RAP = RP # initialize
 
         if pre_col_ch == True:
+            self.get_logger().info("Collision avoidance mode: ON")
             # VO
-            OS_shape = self.cal_shape(self.OS_enu_pos[-1, :], self.OS_dim, self.OS_heading[-1])
-            TS_shape = self.cal_shape(self.TS_enu_pos[-1, :], self.TS_dim, self.TS_heading[-1])
-            ms = self.mink_sum(-OS_shape, TS_shape)
-            TS_conv_hull = self.conv_hull(ms)
-            ColCone = self.cal_CC(self.OS_pos[-1, :], self.TS_pos[-1, :], OS_shape, TS_conv_hull)
-            VO = self.cal_VO(self.OS_spd[-1], self.TS_spd[-1], self.OS_heading[-1], self.TS_heading[-1], ColCone)
+            OS_shape = cal_shape(self.OS_enu_pos[-1, :], self.OS_dim, self.OS_heading[-1])
+            TS_shape = cal_shape(self.TS_enu_pos[-1, :], self.TS_dim, self.TS_heading[-1])
+            ms = mink_sum(-OS_shape, TS_shape)
+            TS_conv_hull = conv_hull(ms)
+            ColCone = cal_CC(self.OS_enu_pos[-1, :], TS_conv_hull)
+            VO = cal_VO(self.OS_spd[-1], self.TS_spd[-1], self.OS_heading[-1], self.TS_heading[-1], ColCone)
             # WVO
-            WVO = self.cal_WVO(self.OS_spd[-1], self.TS_spd[-1], self.OS_heading[-1], VO)
+            WVO = cal_WVO(self.OS_spd[-1], self.TS_spd[-1], self.OS_heading[-1], VO, self.alpha, self.tmin)
             # RAV
-            RAP = self.cal_RP(self.OS_enu_pos[-1, :], RAV)
-            RAV = self.cal_RAV(RAV, RAP, WVO)
+            RAV = cal_RAV(RAV, RAP, WVO)
             # RAP
-            RAP = self.cal_RP(self.OS_enu_pos[-1, :], RAV)
+            RAP = cal_RP(self.OS_enu_pos[-1, :], RAV)
             
         else: 
+            self.get_logger().info("Collision avoidance mode : OFF")
             VO = []
             WVO = []
             RAV = []
@@ -190,210 +214,21 @@ class Collision_Avoidance(Node):
         self.RAP_pub.publish(RAPpublish)
 
         # des_heading, des_spd
-        cmd_vel = self.cal_cmd_vel(RAV)
+        des_spd, des_heading = cal_cmd_vel(self.OS_enu_pos[-1, :], RAV, self.ref_spd, self.waypoint, self.des_spd[-1], self.des_heading[-1])
 
-        self.des_heading = np.append(self.des_heading, cmd_vel[1])
+        self.des_heading = np.append(self.des_heading, des_heading)
         self.des_heading = self.des_heading[1:]
         dhdg_pub = Float64()
-        dhdg_pub.data = cmd_vel[1]
+        dhdg_pub.data = des_heading
         self.des_heading_pub.publish(dhdg_pub)
 
-        self.des_spd = np.append(self.des_spd, cmd_vel[0])
+        self.des_spd = np.append(self.des_spd, des_spd)
         self.des_spd = self.des_spd[1:]
         dspd_pub = Float64()
-        dspd_pub.data = cmd_vel[0]
+        dspd_pub.data = des_spd
         self.des_spd_pub.publish(dspd_pub)
 
-    # functions which return something
-    def cal_tCPA(self, OS_pos, TS_pos, OS_heading, TS_heading):
-        # Convert heading values to radians
-        OS_heading_rad = np.radians(OS_heading)
-        TS_heading_rad = np.radians(TS_heading)
-        # Calculate relative position of two vessels
-        rel_pos = np.array(OS_pos) - np.array(TS_pos)
-        # Calculate relative velocity of two vessels
-        OS_enu_vel = [self.OS_spd[-1] * np.cos(OS_heading_rad), self.OS_spd[-1] * np.sin(OS_heading_rad)]
-        TS_enu_vel = [self.TS_spd[-1] * np.cos(TS_heading_rad), self.TS_spd[-1] * np.sin(TS_heading_rad)]
-        rel_vel = np.array(OS_enu_vel) - np.array(TS_enu_vel)
-        
-        # Calculate tCPA
-        norm_rel_vel = np.linalg.norm(rel_vel)
-        if norm_rel_vel != 0:
-            tCPA = np.dot(rel_pos, rel_vel) / (norm_rel_vel ** 2)
-        else:
-            tCPA = 0.0
-
-        return tCPA
-
-    def cal_dCPA(self, OS_pos, TS_pos, OS_spd, TS_spd, OS_heading, TS_heading, tCPA):
-        # Convert heading values to radians
-        OS_heading_rad = np.radians(OS_heading)
-        TS_heading_rad = np.radians(TS_heading)
-        OS_enu_vel = [OS_spd * np.cos(OS_heading_rad), OS_spd * np.sin(OS_heading_rad)]
-        TS_enu_vel = [TS_spd * np.cos(TS_heading_rad), TS_spd * np.sin(TS_heading_rad)]
-        # calculate enu position at CPA
-        OS_pos_CPA = OS_pos + [value * tCPA for value in OS_enu_vel]
-        TS_pos_CPA = TS_pos + [value * tCPA for value in TS_enu_vel]
-
-        dCPA = np.linalg.norm(OS_pos_CPA - TS_pos_CPA)
-        return dCPA
     
-    def cal_pre_col_ch(self, tCPA, dCPA):
-        if tCPA < self.tmin and dCPA < self.dmax:
-            pre_col_ch = True 
-        else:
-            pre_col_ch = False
-
-        return pre_col_ch
-
-    def rotate_mat(self, heading):
-        heading_rad = np.radians(heading)
-        rot_mat = np.array([[np.cos(heading_rad), -np.sin(heading_rad)], [np.sin(heading_rad), np.cos(heading_rad)]])
-        return rot_mat
-
-    def cal_shape(self, pos, dim, heading):
-        heading_rad = np.radians(heading)
-        temp_x = np.transpose([2/3, 1/3, -1/3, -1/3, 1/3])
-        temp_x = [value * dim[0] for value in temp_x]
-        temp_y = np.transpose([0, 1/2, 1/2, -1/2, -1/2])
-        temp_y = [value * dim[1] for value in temp_y]
-        temp = np.hstack((temp_x, temp_y))
-        Rot = self.rotate_mat(heading_rad)
-        r_temp = [value * Rot for value in temp]
-        rt_temp = [value + pos for value in r_temp]
-        shape = np.array(rt_temp)
-        return shape
-
-    def mink_sum(self, A, B):
-        # A = - OS_shape
-        # B = TS_shape
-        # sA = size(A)
-        # sB = size(B)
-        # AB = reshape(A, [1, sA]) + reshape(B, [sB(1), 1, sB(2)])
-        # AB = reshape(AB, [], 2)
-        # mink_sum = AB + OS_pos
-        ms = []
-        for point1 in A:
-            for point2 in B:
-                sum_point = [point1[0] + point2[0], point1[1] + point2[1]]
-                ms.append(sum_point)
-
-        return ms
-
-    def conv_hull(self, mink_sum):
-        hull = ConvexHull(mink_sum)
-        hull_points = mink_sum[hull.vertices]
-        return hull_points
-
-    def cal_CC(self, OS_pos, TS_pos, OS_shape, TS_conv_hull):
-        # OS_shape = n x 2 array of [x, y]
-        # TS_shape = m x 2 array of [x, y]
-        # OS_pos = [x, y]
-        # TS_pos = [x, y]
-        # to be filled...
-        grad = np.zeros(len(TS_conv_hull[:, 0]))
-        for i in range(len(TS_conv_hull[:, 0])):
-            grad[i] = np.arctan2(TS_conv_hull[i, 1]-OS_pos[1], TS_conv_hull[i, 0]-OS_pos[0])
-        
-        max_idx = np.argmax(grad)
-        min_idx = np.argmin(grad)
-
-        CC = np.zeros((3, 2))
-        CC[0, :] = TS_conv_hull[min_idx, :]
-        CC[1, :] = OS_pos
-        CC[2, :] = TS_conv_hull[max_idx, :]
-        return CC
-
-    def cal_VO(self, OS_spd, TS_spd, OS_heading, TS_heading, CC):
-        # Convert heading values to radians
-        OS_heading_rad = np.radians(OS_heading)
-        TS_heading_rad = np.radians(TS_heading)
-        # Calculate relative velocity of two vessels
-        OS_enu_vel = [OS_spd * np.cos(OS_heading_rad), OS_spd * np.sin(OS_heading_rad)]
-        TS_enu_vel = [TS_spd * np.cos(TS_heading_rad), TS_spd * np.sin(TS_heading_rad)]
-        rel_vel = np.array(TS_enu_vel) - np.array(OS_enu_vel)
-        # Calculate VO from CC
-        VO = [value + rel_vel for value in CC]
-        return VO
-        
-    def cal_WVO(self, OS_spd, TS_spd, OS_heading, VO):
-        a = self.alpha * OS_spd * self.tmin / 3
-        b = a / 2
-        ell = self.ellipse([0, 0], a, b, OS_heading) 
-        ms = self.mink_sum(ell, VO)
-        ch = self.conv_hull(ms)
-        WVO = ch
-
-        return WVO
-
-    def ellipse(self, Center, a, b, heading):
-        theta = np.linspace(0, 2*np.pi, 10)
-        x = np.transpose([value * a for value in theta])
-        y = np.transpose([value * b for value in theta])
-        ell = np.hstack(x, y)
-        r_ell = [self.rotate_mat(heading) * value for value in ell]
-        rt_ell = [value + Center for value in r_ell]
-        return rt_ell  
-    
-    def cal_RV(self, heading):
-        spd_res = 0.1
-        heading_res = 1.0
-        spd_arr = np.arange(self.spd_lim[0], self.spd_lim[1], spd_res)
-        heading_arr = np.arange(self.heading_lim[0], self.heading_lim[1], heading_res)
-        heading_arr = [value + heading for value in heading_arr]
-
-        rv = []
-        RV = []
-        for spd in spd_arr:
-            for hdg in heading_arr:
-                if hdg > 180:
-                    hdg -= 360
-                elif hdg < -180:
-                    hdg += 360
-
-                rv = [spd, hdg]
-                RV = np.append(RV, rv)
-
-        RV = np.reshape(RV, (-1, 2))
-
-        return RV
-
-    def cal_RP(self, OS_pos, RV):
-        if len(RV) == 0:
-            RP = []
-        else:
-            RP = np.zeros((len(RV), 2))
-            RP[:, 0] = OS_pos[0] + RV[:, 0] * np.cos(RV[:, 1])
-            RP[:, 1] = OS_pos[1] + RV[:, 0] * np.sin(RV[:, 1])
-
-        return RP
-        
-    def cal_RAV(self, RAV, RAP, WVO):
-        if len(RAV) == 0:
-            RAV = []
-        else:
-            polygon_path = mpath.Path(WVO)
-            test_points = RAP
-            results = polygon_path.contains_points(test_points)
-            RAV = test_points[results]
-
-        return RAV
-
-    def cal_cmd_vel(self, RAV):
-        if np.size(RAV) != 0:
-            ref_ang = np.arctan2(self.waypoint[1] - self.OS_enu_pos[-1, 1], self.waypoint[0] - self.OS_enu_pos[-1, 0])
-            ref_ang = math.degrees(ref_ang)
-            ref_vel = [self.ref_spd, ref_ang]
-            
-            RAV = np.array(RAV)  # Convert RAV to a NumPy array
-            cost = [value - ref_vel for value in RAV]
-            idx = np.argmin(np.linalg.norm(cost))
-            cmd_vel = RAV[idx, :]
-        else:
-            cmd_vel = [self.des_spd[-1], self.des_heading[-1]]
-
-        return cmd_vel
-
 def main(args=None):
     rclpy.init(args=args)
     collision_avoidance = Collision_Avoidance()
