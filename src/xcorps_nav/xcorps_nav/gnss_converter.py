@@ -32,7 +32,7 @@ class GNSSConverter(Node):
         self.TS = [0, 0, 0]
 
         namespace_OS = '/OS'
-        namespace_TS = '/TS'
+        namespace_TS = '/TS3'
         self.OS_gps_lon_sub = self.create_subscription(String, namespace_OS + '/gps/lon', self.OS_gps_lon_callback, 1)
         self.OS_gps_lat_sub = self.create_subscription(String, namespace_OS + '/gps/lat', self.OS_gps_lat_callback, 1)
         self.TS_gps_lon_sub = self.create_subscription(String, namespace_TS + '/gps/lon', self.TS_gps_lon_callback, 1)
