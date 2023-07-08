@@ -15,12 +15,11 @@ class GNSSConverter(Node):
         #     config = yaml.safe_load(file)
         #     self.origin = self.get_parameter('origin').value
         default_params = {
-            # to be modified
-            'Left_Bottom' : [37.455842, 126.951699],
-            'Right_Bottom' : [37.455934, 126.951688],
-            'Left_Top' : [37.455834, 126.951573],
-            'Right_Top' : [37.455925, 126.951562],
-            'origin' : [37.455842, 126.951699],
+            'Left_Bottom' : [37.4557578333, 126.9517325], # to be modified
+            'Right_Bottom' : [37.4558135, 126.9517261667],
+            'Left_Top' : [37.4558071667, 126.9516436667], # to be modified
+            'Right_Top' : [37.4557513333, 126.9516513333], # to be modified
+            'origin' : [37.455778333, 126.9517325], # to be modified, same as Left_Bottom
         }
         self.Left_Bottom = self.declare_parameter("Left_Bottom", default_params['Left_Bottom']).value
         self.Right_Bottom = self.declare_parameter("Right_Bottom", default_params['Right_Bottom']).value
