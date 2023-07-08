@@ -7,11 +7,14 @@ from std_msgs.msg import Float64
 
 class HeadingAngle:
     def __init__(self):
-        rospy.Subscriber("/imu/mag", MagneticField, self.Magnetic_callback, queue_size=1)
-        self.imu_sub = self.create_subscription(MagneticField, namespace_OS + '/bno055/mag', self.imu_OS_sub, 1)
-        self.imu_TS_sub = self.create_subscription(MagneticField, namespace_TS + '/bno055/mag', self.imu_TS_sub, 1)
-        self.heading_OS_pub = self.create_publisher(Float64, namespace_OS + '/heading', self.heading_OS_pub, 1)
-        self.heading_TS_pub = self.create_publisher(Float64, namespace_TS + '/heading', self.heading_TS_pub, 1)
+        self.dt = 0.1
+        
+        self.imu_sub = self.create_subscription(MagneticField, namespace_OS + '/bno055/mag', self.imu_OS_callback, 1)
+        self.imu_TS_sub = self.create_subscription(MagneticField, namespace_TS + '/bno055/mag', self.imu_TS_callback, 1)
+        self.heading_OS_pub = self.create_publisher(Float64, namespace_OS + '/heading', 1)
+        self.heading_TS_pub = self.create_publisher(Float64, namespace_TS + '/heading', 1)
+
+        self.pub_timer = self.create_timer(self.dt, self.pub_heading)
       
         self.magnetic_x = 0.0
         self.magnetic_y = 0.0
